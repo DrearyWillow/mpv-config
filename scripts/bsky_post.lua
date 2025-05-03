@@ -16,6 +16,10 @@ local o = {
 }
 options.read_options(o)
 
+local function is_empty(str)
+    return str == nil or str == ''
+end
+
 local function timestamp()
     local now = os.time()
     local ms = tostring(math.floor((socket.gettime() % 1) * 1000))
@@ -121,7 +125,7 @@ end
 
 local function get_service_endpoint(did)
     local doc = get_did_doc(did)
-    if not doc.service then return nil end
+    if is_empty(doc.service) then return nil end
 
     for _, service in ipairs(doc.service) do
         if service.type == "AtprotoPersonalDataServer" then
@@ -156,7 +160,7 @@ end
 local function resolve_handle(handle)
     if string.sub(handle, 1, 4) == "did:" then return handle end
     if string.sub(handle, 1, 1) == "@" then handle = string.sub(handle, 2) end
-    if not handle then return nil end
+    if is_empty(handle) then return nil end
     local url = 'https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle='..handle
     local res = http_get(url)
     return res.did
@@ -191,7 +195,7 @@ local function upload_screenshot_blob(session, service_endpoint)
 
     local size_kb = #blob_bytes / 1024
     if size_kb > 1000 then
-        msg.error(string.format("Screenshot is too large (%.1f KB), consider resizing or compressing further.", size_kb))
+        msg.error(string.format("Screenshot is too large to upload (%.1f KB).", size_kb))
         return nil
     end
 
@@ -203,8 +207,25 @@ end
 
 local function bsky_post(input)
     local did = resolve_handle(o.handle)
+    if is_empty(did) then
+        msg.info("Failed to resolve handle")
+        mp.osd_message("Failed to resolve handle. Post cancelled.", 2)
+        return
+    end
+
     local service = get_service_endpoint(did)
+    if is_empty(service) then
+        msg.info("Failed to get service endpoint")
+        mp.osd_message("Failed to get service endpoint. Post cancelled.", 2)
+        return
+    end
+
     local session = get_session(did, o.password, service)
+    if is_empty(session) then
+        msg.info("Failed to get session")
+        mp.osd_message("Failed to get session. Post cancelled.", 2)
+        return
+    end
 
     local blob = upload_screenshot_blob(session, service)
     if not blob then
@@ -225,26 +246,33 @@ local function bsky_post(input)
         createdAt = timestamp(),
         embed = {
             ["$type"] = "app.bsky.embed.images",
-            images = {
-                {
-                    alt = alt_text,
-                    image = blob,
-                    aspectRatio = {
-                        width = mp.get_property_native("osd-width"),
-                        height = mp.get_property_native("osd-height")
-                    }
+            images = {{
+                alt = alt_text,
+                image = blob,
+                aspectRatio = {
+                    width = mp.get_property_native("osd-width"),
+                    height = mp.get_property_native("osd-height")
                 }
-            }
+            }}
         }
     }
 
     local uri = create_record(session, service, record)
-    msg.info(uri)
+    if is_empty(uri) then
+        msg.info("Bluesky post creation failed.")
+        mp.osd_message("Bluesky post creation failed.", 2)
+    end
+    msg.info("Bluesky post sucessfully created: "..uri)
     mp.osd_message("Bluesky post created: "..uri, 2)
 end
 
 local function input_manager(input, err, flag)
-    if (not input) or (input == "") then
+    if is_empty(o.handle) or is_empty(o.password) then
+        msg.info("Missing credentials in ~/.config/mpv/scripts/bsky_post.lua")
+        mp.osd_message("Missing credentials in ~/.config/mpv/scripts/bsky_post.lua", 3)
+        return
+    end
+    if not input or input == 'exit' or input == 'quit' then -- allow ''
         msg.info("Cancelled post creation.")
         mp.osd_message("Cancelled post creation", 1)
         return
@@ -252,7 +280,7 @@ local function input_manager(input, err, flag)
     bsky_post(input)
 end
 
-mp.add_key_binding("Alt+b", "bsky_post", function()
+mp.add_key_binding("Alt+B", "bsky_post", function()
     uin.get_user_input(input_manager, {
         request_text = "Enter post text:",
         replace = true
