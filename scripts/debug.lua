@@ -14,23 +14,47 @@ local function dump_properties()
     mp.osd_message("dump_properties done")
 end ]]
 
+-- package.path = mp.command_native({"expand-path", "~~/script-modules/?.lua;"})..package.path
+-- local uin = require "user-input-module"
+
 local utils = require 'mp.utils'
 local msg = require 'mp.msg'
 local options = require 'mp.options'
 
 
-
 local function dump_properties()
     local path = mp.get_property('path')
     local dir, path_filename = utils.split_path(path)
+    local workdir = mp.get_property_osd("working-directory")
     msg.info("PATH: "..path)
     msg.info("DIR: "..dir)
     msg.info("PATH_FILENAME: "..path_filename)
+    msg.info("WORK_DIR: "..workdir)
+    msg.info("Lua Version: ".._VERSION)
 end
+
+-- local function return_input(input, err, flag)
+--     if (not input) or (input == "") then
+--         msg.info("Cancelled post creation.")
+--         return
+--     end
+--     -- return input
+--     dump_properties(input)
+-- end
 
 mp.add_key_binding('Alt+w', dump_properties)
 
+-- mp.add_key_binding("Alt+W", "test-", function()
+--     uin.get_user_input(return_input, {
+--         request_text = "Enter path:",
+--         replace = true
+--     }, "replace")
+-- end)
 
+-- local table = {}
+-- table.name = "subprocess"
+-- table.args = {'open-woaf', path}
+-- mp.command_native_async(table, callback)
 
 -- local working_directory = mp.get_property("working-directory")
 -- local path = mp.get_property('path')
@@ -70,4 +94,13 @@ mp.add_key_binding('Alt+w', dump_properties)
 -- msg.info("PATH: "..path)
 -- if string.find(path,"/mnt/Torrent/") then 
 --     msg.info("Torrent Directory")
+-- end
+
+-- local metadata = mp.get_property_native("metadata")
+-- if metadata then
+--     for key, value in pairs(metadata) do
+--         msg.info(key .. ": " .. tostring(value))
+--     end
+-- else
+--     msg.info("No metadata available.")
 -- end
