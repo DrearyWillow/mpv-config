@@ -6,9 +6,8 @@ local socket = require("socket")
 local utils = require 'mp.utils'
 local msg = require 'mp.msg'
 local options = require 'mp.options'
+local input = require 'mp.input'
 
-package.path = mp.command_native({"expand-path", "~~/script-modules/?.lua;"})..package.path
-local uin = require "user-input-module"
 
 local o = {
     handle = '',
@@ -154,7 +153,8 @@ local function create_record(session, service_endpoint, record)
         record = record
     }
     local res = http_post(api, payload, token)
-    return res.uri or nil
+    if not res then return nil end
+    return res.uri
 end
 
 local function resolve_handle(handle)
@@ -205,7 +205,7 @@ local function upload_screenshot_blob(session, service_endpoint)
     return response.blob or nil
 end
 
-local function bsky_post(input)
+local function bsky_post(user_input)
     local did = resolve_handle(o.handle)
     if is_empty(did) then
         msg.info("Failed to resolve handle")
@@ -240,7 +240,7 @@ local function bsky_post(input)
     local alt_text = title .. '\n' .. time .. '\n' .. subs
 
     local record = {
-        text = input,
+        ["text"] = user_input,
         ["$type"] = "app.bsky.feed.post",
         langs = { "en" },
         createdAt = timestamp(),
@@ -266,23 +266,27 @@ local function bsky_post(input)
     mp.osd_message("Bluesky post created: "..uri, 2)
 end
 
-local function input_manager(input, err, flag)
-    if is_empty(o.handle) or is_empty(o.password) then
-        msg.info("Missing credentials in ~/.config/mpv/scripts/bsky_post.lua")
-        mp.osd_message("Missing credentials in ~/.config/mpv/scripts/bsky_post.lua", 3)
-        return
-    end
-    if not input or input == 'exit' or input == 'quit' then -- allow ''
-        msg.info("Cancelled post creation.")
-        mp.osd_message("Cancelled post creation", 1)
-        return
-    end
-    bsky_post(input)
+local function input_manager()
+    input.get({
+        prompt = "Enter text: ",
+        submit = function(user_input)
+            msg.info("User entered: " .. user_input)
+            if is_empty(o.handle) or is_empty(o.password) then
+                msg.info("Missing credentials in ~/.config/mpv/scripts/bsky_post.lua")
+                mp.osd_message("Missing credentials in ~/.config/mpv/scripts/bsky_post.lua", 3)
+                input.terminate()
+                return
+            end
+            if not user_input or user_input == 'exit' or user_input == 'quit' then -- allow ''
+                msg.info("Cancelled post creation.")
+                mp.osd_message("Cancelled post creation", 1)
+                input.terminate()
+                return
+            end
+            input.terminate()
+            bsky_post(user_input)
+        end
+    })
 end
 
-mp.add_key_binding("Alt+B", "bsky_post", function()
-    uin.get_user_input(input_manager, {
-        request_text = "Enter post text:",
-        replace = true
-    }, "replace")
-end)
+mp.add_key_binding("Alt+B", "bsky_post", input_manager)
